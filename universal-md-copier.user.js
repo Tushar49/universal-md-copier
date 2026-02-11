@@ -132,6 +132,7 @@
   menu.id = 'umd-menu';
   menu.innerHTML = `
     <div class="umd-mi" data-action="copy-md"><span class="ico">📋</span>Copy as Markdown</div>
+    <div class="umd-mi" data-action="full-copy"><span class="ico">📜</span>Full Page Copy MD</div>
     <div class="umd-mi" data-action="copy-text"><span class="ico">📝</span>Copy as Plain Text</div>
     <div class="umd-mi" data-action="copy-html"><span class="ico">🌐</span>Copy Clean HTML</div>
     <div class="umd-sep"></div>
@@ -140,6 +141,7 @@
     <div class="umd-mi" data-action="expand-copy"><span class="ico">🔓</span>Expand All + Copy MD</div>
     <div class="umd-sep"></div>
     <div class="umd-mi" data-action="download-md"><span class="ico">💾</span>Download .md File</div>
+    <div class="umd-mi" data-action="full-download"><span class="ico">📥</span>Full Page Download .md</div>
     <div class="umd-mi" data-action="download-ipynb"><span class="ico">📓</span>Download .ipynb</div>
     <div class="umd-mi" data-action="download-nb-all"><span class="ico">📦</span>Download All (NB + files)</div>
     <div class="umd-mi" data-action="minimize"><span class="ico">🔽</span>Minimize</div>
@@ -311,6 +313,32 @@
     return expanded;
   }
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // SCROLL TO LOAD ALL (lazy / infinite-scroll pages)
+  // ═══════════════════════════════════════════════════════════════════════
+  async function scrollToLoadAll() {
+    const step = 600, maxScrolls = 40, delay = 400;
+
+    // Detect the scrollable container:
+    //   LinkedIn uses <main id="workspace">, most pages use documentElement or body
+    let container = document.scrollingElement || document.documentElement;
+    if (_isLinkedIn()) {
+      const ws = document.getElementById('workspace');
+      if (ws && ws.scrollHeight > ws.clientHeight + 50) container = ws;
+    }
+
+    const origTop = container.scrollTop;
+    for (let i = 0; i < maxScrolls; i++) {
+      const before = container.scrollTop;
+      container.scrollBy(0, step);
+      await new Promise(r => setTimeout(r, delay));
+      if (container.scrollTop === before) break; // reached bottom
+    }
+    // scroll back to original position
+    container.scrollTo(0, origTop);
+    await new Promise(r => setTimeout(r, 300));
+  }
+
   async function doCopy(action) {
     try {
       let text;
@@ -319,12 +347,30 @@
         case 'copy-text':      text = document.body.innerText; break;
         case 'copy-html':      text = getCleanHTML(); break;
         case 'copy-selection': text = extractSelection(); break;
+        case 'full-copy': {
+          showToast('Scrolling to load full page…');
+          await scrollToLoadAll();
+          const n2 = expandAll();
+          if (n2) await new Promise(r => setTimeout(r, 500));
+          text = await extractFullPage();
+          break;
+        }
         case 'expand-copy': {
           const n = expandAll();
           showToast(`Expanded ${n} elements, waiting 500ms...`);
           await new Promise(r => setTimeout(r, 500));
           text = await extractFullPage();
           break;
+        }
+        case 'full-download': {
+          showToast('Scrolling to load full page…');
+          await scrollToLoadAll();
+          expandAll();
+          await new Promise(r => setTimeout(r, 500));
+          downloadFile(await extractFullPage());
+          btn.classList.add('ok');
+          setTimeout(() => btn.classList.remove('ok'), 1400);
+          return;
         }
         case 'download-md': {
           downloadFile(await extractFullPage());
@@ -495,22 +541,6 @@
   async function extractFullPage() {
     const url = location.href;
     const parts = [];
-
-    // ── LinkedIn: auto-scroll #workspace to load all lazy sections ──
-    if (_isLinkedInProfile()) {
-      const ws = document.getElementById('workspace');
-      if (ws) {
-        const step = 600, maxScrolls = 25;
-        for (let i = 0; i < maxScrolls; i++) {
-          const before = ws.scrollTop;
-          ws.scrollBy(0, step);
-          await new Promise(r => setTimeout(r, 400));
-          if (ws.scrollTop === before) break; // reached bottom
-        }
-        ws.scrollTo(0, 0); // scroll back to top
-        await new Promise(r => setTimeout(r, 300));
-      }
-    }
 
     // ── Metadata ──
     const title = getTitle();
