@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Universal Page → Markdown Copier
 // @namespace    https://github.com/Tushar49/universal-md-copier
-// @version      3.6
-// @description  Draggable floating button that copies ANY webpage as clean Markdown. Handles articles, code blocks, tables, images, videos (HLS/MP4/blob), iframes, Jupyter notebooks (API fetch + .ipynb download + all-files export), transcripts, math (KaTeX/MathJax), forms, Next.js __NEXT_DATA__, auto-expand dropdowns, and more.
+// @version      3.8
+// @description  Draggable floating button that copies ANY webpage as clean Markdown. Handles articles, code blocks, tables, images, videos (HLS/MP4/blob), iframes, Jupyter notebooks (API fetch + .ipynb download + all-files export), transcripts, math (KaTeX/MathJax), forms, Next.js __NEXT_DATA__, auto-expand dropdowns, LinkedIn profiles, full-page scroll-to-load capture, and more.
 // @author       TechWiz
 // @license      MIT
 // @match        *://*/*
