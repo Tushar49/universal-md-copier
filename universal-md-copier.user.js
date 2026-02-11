@@ -496,6 +496,22 @@
     const url = location.href;
     const parts = [];
 
+    // ── LinkedIn: auto-scroll #workspace to load all lazy sections ──
+    if (_isLinkedInProfile()) {
+      const ws = document.getElementById('workspace');
+      if (ws) {
+        const step = 600, maxScrolls = 25;
+        for (let i = 0; i < maxScrolls; i++) {
+          const before = ws.scrollTop;
+          ws.scrollBy(0, step);
+          await new Promise(r => setTimeout(r, 400));
+          if (ws.scrollTop === before) break; // reached bottom
+        }
+        ws.scrollTo(0, 0); // scroll back to top
+        await new Promise(r => setTimeout(r, 300));
+      }
+    }
+
     // ── Metadata ──
     const title = getTitle();
     parts.push(`# ${title}\n`);
@@ -516,12 +532,14 @@
     const bc = getBreadcrumb();
     if (bc) parts.push(`**Path:** ${bc}\n`);
 
-    // ── Navigation / TOC ──
-    const nav = getNavLinks();
-    if (nav.length > 0) {
-      parts.push('## Navigation\n');
-      nav.forEach(n => parts.push(`- [${n.text}](${n.href})${n.active ? ' ◀' : ''}`));
-      parts.push('');
+    // ── Navigation / TOC (skip for LinkedIn — too much noise) ──
+    if (!_isLinkedIn()) {
+      const nav = getNavLinks();
+      if (nav.length > 0) {
+        parts.push('## Navigation\n');
+        nav.forEach(n => parts.push(`- [${n.text}](${n.href})${n.active ? ' ◀' : ''}`));
+        parts.push('');
+      }
     }
 
     // ── Main content ──
@@ -694,9 +712,41 @@
   }
 
   // ═══════════════════════════════════════════════════════════════════════
+  // HELPERS: LINKEDIN DETECTION
+  // ═══════════════════════════════════════════════════════════════════════
+  const _LI_NOISE_HEADINGS = new Set([
+    'suggested for you', 'analytics', 'people also viewed',
+    'people you may know', 'you might like', 'more profiles for you',
+    'similar profiles', 'courses', 'people similar to'
+  ]);
+
+  function _isLinkedIn() {
+    return location.hostname === 'www.linkedin.com' || location.hostname === 'linkedin.com';
+  }
+  function _isLinkedInProfile() {
+    return _isLinkedIn() && /^\/in\//.test(location.pathname);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
   // HELPERS: FIND MAIN CONTENT
   // ═══════════════════════════════════════════════════════════════════════
   function findMainContent() {
+    // ── LinkedIn profile: use the profile content column, not the entire workspace ──
+    if (_isLinkedInProfile()) {
+      const ws = document.getElementById('workspace');
+      if (ws) {
+        // LinkedIn uses a 3-column layout: main#workspace > div > div > [col0, col1, col2]
+        // col0 is the profile content column (largest text)
+        const layoutDiv = ws.querySelector(':scope > div > div');
+        if (layoutDiv && layoutDiv.children.length >= 2) {
+          const profileCol = layoutDiv.children[0];
+          if (profileCol && profileCol.textContent.trim().length > 200) {
+            return profileCol;
+          }
+        }
+      }
+    }
+
     // Priority selectors for the "real" content
     const selectors = [
       '[data-automation-id="applyFlowPage"]', '[data-automation-id="jobPostingPage"]',
@@ -1239,6 +1289,16 @@
     if (SKIP_TAGS.has(tag)) return '';
     // Skip hidden elements (check inline style + hidden attribute; avoid getComputedStyle for perf)
     if (node.style?.display === 'none' || node.style?.visibility === 'hidden' || node.hidden) return '';
+
+    // Skip LinkedIn noise sections (Suggested for you, Analytics, People you may know, etc.)
+    if (_isLinkedIn() && (tag === 'section' || tag === 'div')) {
+      const h2 = node.querySelector(':scope > div h2, :scope > h2');
+      if (h2 && _LI_NOISE_HEADINGS.has(h2.textContent.trim().toLowerCase())) return '';
+      // Skip LinkedIn CTA banners (Open to work, Showcase your services)
+      const txt = node.textContent.trim().toLowerCase();
+      if (tag === 'section' && !h2 && node.textContent.trim().length < 400 &&
+          (/open to work|showcase your services|add services/i.test(txt))) return '';
+    }
 
     // Skip Workday form field containers — handled by getFormData() extractor
     const automId = node.getAttribute?.('data-automation-id') || '';
