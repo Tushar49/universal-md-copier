@@ -1,13 +1,14 @@
 // ==UserScript==
 // @name         Universal Page → Markdown Copier
-// @namespace    https://github.com/EduMails/universal-md-copier
-// @version      3.4
+// @namespace    https://github.com/Tushar49/universal-md-copier
+// @version      3.5
 // @description  Draggable floating button that copies ANY webpage as clean Markdown. Handles articles, code blocks, tables, images, videos (HLS/MP4/blob), iframes, Jupyter notebooks (API fetch + .ipynb download + all-files export), transcripts, math (KaTeX/MathJax), forms, Next.js __NEXT_DATA__, auto-expand dropdowns, and more.
-// @author       EduMails
+// @author       Tushar49
 // @match        *://*/*
 // @grant        GM_setClipboard
 // @grant        GM_notification
 // @grant        GM_xmlhttpRequest
+// @connect      *
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -29,8 +30,10 @@
     ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px;opacity:0';
     document.body.appendChild(ta);
     ta.select();
-    try { document.execCommand('copy'); } catch (_) {}
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (_) {}
     document.body.removeChild(ta);
+    if (!ok) throw new Error('All clipboard methods failed');
     return true;
   }
 
@@ -145,8 +148,8 @@
   function showToast(msg, ms = 2200) {
     const r = btn.getBoundingClientRect();
     toast.textContent = msg;
-    toast.style.left = Math.max(4, r.left - 10) + 'px';
-    toast.style.top = (r.top - 32) + 'px';
+    toast.style.left = Math.max(4, Math.min(r.left - 10, window.innerWidth - 200)) + 'px';
+    toast.style.top = Math.max(4, r.top - 32) + 'px';
     toast.classList.add('show');
     setTimeout(() => toast.classList.remove('show'), ms);
   }
@@ -175,6 +178,30 @@
     document.addEventListener('mousemove', move);
     document.addEventListener('mouseup', up);
   });
+
+  // Touch support for mobile drag
+  btn.addEventListener('touchstart', e => {
+    if (minimized) return;
+    const touch = e.touches[0];
+    dragged = false;
+    ox = touch.clientX - btn.getBoundingClientRect().left;
+    oy = touch.clientY - btn.getBoundingClientRect().top;
+    const touchMove = ev => {
+      ev.preventDefault();
+      dragged = true; btn.classList.add('dragging');
+      const t = ev.touches[0];
+      btn.style.left = (t.clientX - ox) + 'px';
+      btn.style.top = (t.clientY - oy) + 'px';
+      btn.style.right = 'auto'; btn.style.bottom = 'auto';
+    };
+    const touchEnd = () => {
+      btn.classList.remove('dragging');
+      document.removeEventListener('touchmove', touchMove);
+      document.removeEventListener('touchend', touchEnd);
+    };
+    document.addEventListener('touchmove', touchMove, { passive: false });
+    document.addEventListener('touchend', touchEnd);
+  }, { passive: true });
 
   btn.addEventListener('dblclick', e => { e.preventDefault(); toggleMinimize(); });
 
@@ -298,7 +325,12 @@
           text = await extractFullPage();
           break;
         }
-        case 'download-md':    downloadFile(await extractFullPage()); return;
+        case 'download-md': {
+          downloadFile(await extractFullPage());
+          btn.classList.add('ok');
+          setTimeout(() => btn.classList.remove('ok'), 1400);
+          return;
+        }
         case 'download-ipynb': {
           const fname = await downloadNotebook();
           showToast('✓ Downloaded ' + fname);
@@ -612,7 +644,8 @@
   // HELPERS: METADATA
   // ═══════════════════════════════════════════════════════════════════════
   function getTitle() {
-    for (const sel of ['h1', 'article h1', 'main h1', '[class*="title"] h1']) {
+    // Most-specific selectors first to avoid picking sidebar/nav h1
+    for (const sel of ['article h1', 'main h1', '[role="main"] h1', '[class*="title"] h1', '.content h1', 'h1']) {
       const el = document.querySelector(sel);
       if (el?.textContent?.trim()?.length > 1) return el.textContent.trim();
     }
@@ -1203,11 +1236,8 @@
 
     // Skip completely
     if (SKIP_TAGS.has(tag)) return '';
-    // Skip hidden elements
-    try {
-      const st = window.getComputedStyle(node);
-      if (st.display === 'none' || st.visibility === 'hidden') return '';
-    } catch (_) {}
+    // Skip hidden elements (check inline style + hidden attribute; avoid getComputedStyle for perf)
+    if (node.style?.display === 'none' || node.style?.visibility === 'hidden' || node.hidden) return '';
 
     // Skip Workday form field containers — handled by getFormData() extractor
     const automId = node.getAttribute?.('data-automation-id') || '';
@@ -1300,7 +1330,10 @@
         const text = childrenText(node, ctx).trim();
         if (!text) return '';
         if (!href || href === '#' || href.startsWith('javascript:')) return text;
-        const fullHref = href.startsWith('http') ? href : new URL(href, location.href).href;
+        let fullHref = href;
+        if (!href.startsWith('http')) {
+          try { fullHref = new URL(href, location.href).href; } catch (_) { fullHref = href; }
+        }
         return `[${text}](${fullHref})`;
       }
 
