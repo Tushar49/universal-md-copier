@@ -9,6 +9,7 @@
 // @grant        GM_setClipboard
 // @grant        GM_notification
 // @grant        GM_xmlhttpRequest
+// @grant        unsafeWindow
 // @connect      *
 // @run-at       document-idle
 // ==/UserScript==
@@ -1580,5 +1581,20 @@
     return result.join('\n');
   }
 
-  console.log('[UMD] ✓ Universal Markdown Copier ready');
+  // ═══════════════════════════════════════════════════════════════════════
+  // EXPOSE API TO PAGE WORLD (enables CDP / DevTools access)
+  // ═══════════════════════════════════════════════════════════════════════
+  // Tampermonkey runs userscripts in an isolated world; CDP's Runtime.evaluate
+  // runs in the page's main world. Bridge key functions via unsafeWindow (or
+  // window when @grant none) so CDP tools can call them.
+  const pageWindow = (typeof unsafeWindow !== 'undefined') ? unsafeWindow : window;
+
+  pageWindow.__UMD = {
+    extractFullPage,
+    extractSelection: typeof extractSelection === 'function' ? extractSelection : undefined,
+    copyToClipboard,
+    version: '3.8',
+  };
+
+  console.log('[UMD] ✓ Universal Markdown Copier ready (API exposed on window.__UMD)');
 })();
